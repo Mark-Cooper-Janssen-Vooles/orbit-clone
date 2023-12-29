@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const jwtDecode = require('jwt-decode');
 const mongoose = require('mongoose');
+const jwt = require('express-jwt')
 
 const dashboardData = require('./data/dashboard');
 const User = require('./data/User');
@@ -31,7 +32,8 @@ app.post('/api/authenticate', async (req, res) => {
 
     if (!user) {
       return res.status(403).json({
-        message: 'Wrong email or password.'
+        message: 'Wrong email or password.' 
+        // good to be vague here so they don't know which one didn't work
       });
     }
 
@@ -134,7 +136,14 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
-app.get('/api/dashboard-data', (req, res) =>
+// middleware that intercepts api calls 
+const checkJwt = jwt({
+  secret: process.env.JWT_SECRET, // used to both sign and verify token
+  issuer: 'api.orbitt',
+  audience: 'api.orbi'
+})
+
+app.get('/api/dashboard-data', checkJwt, (req, res) =>
   res.json(dashboardData)
 );
 
