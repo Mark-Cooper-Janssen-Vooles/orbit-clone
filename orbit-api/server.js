@@ -15,6 +15,7 @@ const {
   hashPassword,
   verifyPassword
 } = require('./util');
+const { decode } = require('jsonwebtoken');
 
 const app = express();
 
@@ -136,19 +137,46 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
+const attachUser = (req, res, next) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    return res.status(401).json({ message: 'authentication invalid'})
+  }
+
+  const decodedToken = jwtDecode(token.slice(7));
+
+  if (!decodedToken) return res.status(401).json({message: 'there was a problem authorizing the request'})
+
+  req.user = decodedToken;
+  next();
+}
+
+app.use(attachUser); // anything that comes beneath here will use this middleware
+
 // middleware that intercepts api calls 
 const checkJwt = jwt({
   secret: process.env.JWT_SECRET, // used to both sign and verify token
-  issuer: 'api.orbitt',
-  audience: 'api.orbi'
+  issuer: 'api.orbit',
+  audience: 'api.orbit'
 })
 
-app.get('/api/dashboard-data', checkJwt, (req, res) =>
-  res.json(dashboardData)
-);
+// custom middleware
+const requireAdmin = (req, res, next) => {
+  const { role } = req.user;
+  if (role !== 'admin') {
+    return res.status(401).json({ message: 'insufficient role' });
+  }
+  next();
+};
+
+app.get('/api/dashboard-data', checkJwt, (req, res) => {
+  return res.json(dashboardData);
+});
+
 
 app.patch('/api/user-role', async (req, res) => {
   try {
+    console.log(req.body);
     const { role } = req.body;
     const allowedRoles = ['user', 'admin'];
 
@@ -170,18 +198,25 @@ app.patch('/api/user-role', async (req, res) => {
   }
 });
 
-app.get('/api/inventory', async (req, res) => {
+app.get('/api/inventory', checkJwt, requireAdmin, async (req, res) => {
   try {
-    const inventoryItems = await InventoryItem.find();
+    const { sub } = req.user;
+    const inventoryItems = await InventoryItem.find({
+      user: sub
+    });
     res.json(inventoryItems);
   } catch (err) {
     return res.status(400).json({ error: err });
   }
 });
 
-app.post('/api/inventory', async (req, res) => {
+app.post('/api/inventory', checkJwt, requireAdmin, async (req, res) => {
   try {
-    const inventoryItem = new InventoryItem(req.body);
+    const { sub } = req.user;
+    const input = Object.assign({}, req.body, {
+      user: sub
+    })
+    const inventoryItem = new InventoryItem(input);
     await inventoryItem.save();
     res.status(201).json({
       message: 'Inventory item created!',
@@ -195,7 +230,7 @@ app.post('/api/inventory', async (req, res) => {
   }
 });
 
-app.delete('/api/inventory/:id', async (req, res) => {
+app.delete('/api/inventory/:id', checkJwt, requireAdmin, async (req, res) => {
   try {
     const deletedItem = await InventoryItem.findOneAndDelete(
       { _id: req.params.id }
