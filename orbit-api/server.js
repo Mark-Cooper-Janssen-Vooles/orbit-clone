@@ -232,8 +232,9 @@ app.post('/api/inventory', checkJwt, requireAdmin, async (req, res) => {
 
 app.delete('/api/inventory/:id', checkJwt, requireAdmin, async (req, res) => {
   try {
+    const { sub } = req.user;
     const deletedItem = await InventoryItem.findOneAndDelete(
-      { _id: req.params.id }
+      { _id: req.params.id, user: sub }
     );
     res.status(201).json({
       message: 'Inventory item deleted!',
